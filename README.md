@@ -1,73 +1,100 @@
 # DS3 Minimap
 
-DS3 Minimap is a Windows overlay for Dark Souls III. It reads the local
-player's position, direction and current map using read-only process access,
-draws a top-down navigation map, and leaves a dotted trail showing where the
-player has travelled.
+Dark Souls III is a wonderful place to get gloriously lost. DS3 Minimap is a
+small, friendly on-screen companion that gives you a simple answer to “where am
+I?” without asking you to stop playing, alt-tab to a wiki, or memorise every
+twist of a castle corridor.
 
-The application is external to the game. It does not inject a DLL, patch game
-code, write to game memory, modify game archives, or communicate over the
-network.
+It was made for my sister, who has
+[aphantasia](https://en.wikipedia.org/wiki/Aphantasia): she can enjoy exploring
+but does not form a clear mental picture of places she has already travelled.
+The minimap gives her a gentle visual record of the route behind her and a clear
+“you are here” point for the route ahead. It is simply a navigation aid, not a
+medical tool, but I hope it can make a first playthrough feel a little less
+disorienting for anyone who finds spatial navigation difficult.
 
-> [!CAUTION]
-> This is an unofficial third-party tool. Although it only requests read access,
-> using any memory-reading tool carries risk. Offline play is strongly
-> recommended. The application displays a warning but does not detect or block
-> online sessions.
+<p align="center">
+  <img src="docs/assets/ds3-minimap-journey.svg" width="760" alt="Illustrated preview of the minimap: a player marker, dotted trail, bonfire and item marker on a dark, textured map.">
+</p>
 
-## Supported configuration
+## What it helps with
 
-- Windows 10 or Windows 11, x64
-- Steam edition of Dark Souls III
-- Game executable version `1.15.2.0`
-- Complete base game, including all 12 base-game map resources
-- DLC may be installed, but DLC maps are not included in this release
+- A clear player marker that turns as you turn.
+- A softly dotted trail showing the route you have just taken.
+- Automatic map and floor changes, with a smooth fade when you move between
+  levels.
+- Bonfires by default, plus an optional setting for uncollected items.
+- A choice of size, position, colours, map shape, zoom, trail length and more.
 
-The overlay is designed for windowed or managed-borderless play. Normal Windows
-overlays cannot reliably appear over DS3's exclusive-fullscreen mode.
+The map is made from the navigation information in **your own installed copy of
+DS3**, not downloaded artwork. Here is a real example: the layered navigation
+map prepared for the Grand Archives interior. The coloured shapes are walkable
+areas on different heights; they are what the minimap uses to help place you.
 
-## Before you begin
+<p align="center">
+  <img src="docs/assets/grand-archives-navigation-map.png" width="760" alt="Top-down Grand Archives navigation map, generated locally from Dark Souls III navigation data.">
+</p>
 
-You need:
+## The easy setup
 
-1. Dark Souls III fully installed through Steam.
-2. Windows 10 or 11 x64.
+You only need a fully installed Steam copy of **Dark Souls III** and a Windows
+10 or Windows 11 64-bit PC. You do **not** need Git, PowerShell, Visual Studio,
+.NET, Smithbox, Node.js, Python, or any other developer software.
 
-You do not need Git, PowerShell, Visual Studio, .NET, Smithbox, Node.js, Python,
-or any other prerequisite software. The release installer contains the overlay,
-its runtime, and the one-time local map-preparation component.
+1. Download `DS3Minimap-Setup-<version>-win-x64.exe` from the
+   [Releases page](https://github.com/HazzJC/DS3MiniMap/releases).
+2. If DS3 is newly installed, start it once, wait for the main menu, then close
+   it. This is just so DS3 creates its normal graphics settings file.
+3. Run the DS3 Minimap setup program. It installs only for your Windows user;
+   administrator permission is not needed.
+4. Leave **Launch DS3 Minimap** ticked at the end of installation.
+5. Keep DS3 closed while the first-run “Preparing your local map package” window
+   is working. It takes a few minutes and shows its progress. It only reads your
+   game files; it never changes them.
+6. When it finishes, start DS3 from Steam, load your character, and play.
 
-### Launch DS3 once before setup
+For future play sessions, start DS3 Minimap first (from the Start menu or its
+desktop shortcut), then launch DS3. The map stays hidden until the game has focus.
 
-If this is a new DS3 installation, launch the game normally once, wait until the
-main menu appears, and then exit completely. This creates DS3's
-`GraphicsConfig.xml`, which the optional managed-borderless setup needs.
+### Once you are in the game
 
-Do not leave DS3 running during the initial minimap setup.
+- `Ctrl+Shift+M` opens the settings window.
+- `Ctrl+Shift+H` hides or shows the map.
+- `Ctrl+Shift+C` clears the trail for the current play session.
 
-## First-time installation — release installer
+If a tall building ever shows the wrong level, `Ctrl+Shift+PageUp` and
+`Ctrl+Shift+PageDown` let you temporarily choose the floor above or below.
 
-1. Download `DS3Minimap-Setup-<version>-win-x64.exe` from the release.
-2. Launch DS3 once normally, reach the main menu, then close it. This creates
-   the graphics configuration used by the optional borderless setup.
-3. Run the installer. It installs only for the current Windows user and does
-   not require administrator permission.
-4. Leave **Launch DS3 Minimap** enabled at the end of setup.
-5. Read the safety notice and, if desired, accept managed-borderless mode.
-6. The first launch prepares the minimap package directly from your installed
-   DS3 files. Keep DS3 closed while this runs. A progress window remains visible
-   and the process makes no changes to game files.
-7. When preparation completes, launch DS3 from Steam and load a character.
+> [!NOTE]
+> The overlay works best in windowed or managed-borderless mode. The first-run
+> wizard can set this up and keeps a backup of DS3’s original graphics settings.
+> Normal Windows overlays cannot reliably appear over exclusive fullscreen.
 
-The installer adds a Start Menu entry and can optionally create a desktop
-shortcut. It installs the application under:
+## A few reassuring details
 
-```text
-%LocalAppData%\DS3Minimap\App
-```
+This is an unofficial third-party tool. It reads only the local player position,
+direction, map, and—if you enable uncollected-item markers—the relevant pickup
+flags. It does **not** inject into DS3, change game memory, patch game code,
+alter game files, or send game information over the network. Using any
+memory-reading tool is still at your own risk, so offline play is strongly
+recommended.
 
-The local generated maps, settings and trail data remain under
-`%LocalAppData%\DS3Minimap` and are not removed by a normal application update.
+The current release supports the Steam version of DS3 (`1.15.2.0`) and the base
+game. DLC may be installed, but its areas are not mapped yet.
+
+## Thoughts, feedback, and gentle suggestions are very welcome
+
+If the map is confusing, a floor changes at the wrong moment, a bonfire is
+missing, a setting is hard to find, or you simply have an idea that would make
+the tool kinder and easier to use, please open an
+[issue or suggestion](https://github.com/HazzJC/DS3MiniMap/issues). Screenshots,
+the area name, and a short description of what you expected are especially
+helpful—but even “this feels awkward” is useful feedback.
+
+## For curious players and contributors
+
+Everything above is all a player needs. The rest of this document explains how
+to build, inspect, or package the project from source.
 
 ## Development bootstrap
 
@@ -77,11 +104,11 @@ is not required by end users.
 
 ### 1. Open PowerShell in the project folder
 
-Open the `DS3 Map 2` folder in File Explorer, click the address bar, type
+Open your `DS3Minimap` checkout folder in File Explorer, click the address bar, type
 `powershell`, and press Enter. Alternatively, open PowerShell and run:
 
 ```powershell
-Set-Location "C:\Users\Harry\Documents\DS3 Map 2"
+Set-Location "C:\path\to\DS3Minimap"
 ```
 
 ### 2. Make sure DS3 and Steam downloads have finished
@@ -143,7 +170,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\bootstrap.ps1 `
 The path must be the directory containing `DarkSoulsIII.exe`, not the parent
 `DARK SOULS III` directory.
 
-## First launch and recommended launch order
+## Running a development build
 
 Use this order for the first run:
 
