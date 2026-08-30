@@ -1,0 +1,33 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0</TargetFramework>
+    <RuntimeIdentifier>win-x64</RuntimeIdentifier>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="../DS3Minimap.Core/DS3Minimap.Core.csproj" />
+    <ProjectReference Include="../../.deps/smithbox/src/Andre/SoulsFormats/SoulsFormats/Andre.SoulsFormats.csproj" />
+    <ProjectReference Include="../../.deps/smithbox/src/Havok/HKX2/Havok.HKX2.csproj" />
+  </ItemGroup>
+  <ItemGroup>
+    <Content Include="../../.deps/smithbox/src/Smithbox.Data/Assets/PARAM/DS3/Defs/ItemLotParam.xml"
+             Link="Assets/PARAM/DS3/Defs/ItemLotParam.xml"
+             CopyToOutputDirectory="PreserveNewest"
+             CopyToPublishDirectory="PreserveNewest" />
+    <Content Include="../../.deps/smithbox/src/Smithbox.Data/Assets/PARAM/DS3/Defs/BonfireWarpParam.xml"
+             Link="Assets/PARAM/DS3/Defs/BonfireWarpParam.xml"
+             CopyToOutputDirectory="PreserveNewest"
+             CopyToPublishDirectory="PreserveNewest" />
+    <Content Include="../../.deps/smithbox/src/Smithbox.Data/Assets/PARAM/DS3/Param Row Names/English/ItemLotParam.json"
+             Link="Assets/PARAM/DS3/Param Row Names/English/ItemLotParam.json"
+             CopyToOutputDirectory="PreserveNewest"
+             CopyToPublishDirectory="PreserveNewest" />
+    <Content Include="../../.deps/smithbox/src/Smithbox.Data/Assets/PARAM/DS3/Param Row Names/English/BonfireWarpParam.json"
+             Link="Assets/PARAM/DS3/Param Row Names/English/BonfireWarpParam.json"
+             CopyToOutputDirectory="PreserveNewest"
+             CopyToPublishDirectory="PreserveNewest" />
+  </ItemGroup>
+  <Target Name="RequireSmithbox" BeforeTargets="ResolveProjectReferences" Condition="!Exists('../../.deps/smithbox/src/Andre/SoulsFormats/SoulsFormats/Andre.SoulsFormats.csproj')">
+    <Error Text="Pinned Smithbox sources are missing. Run scripts/bootstrap.ps1 first." />
+  </Target>
+</Project>

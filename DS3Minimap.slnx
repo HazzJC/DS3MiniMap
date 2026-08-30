@@ -1,0 +1,13 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/DS3Minimap.App/DS3Minimap.App.csproj" />
+    <Project Path="src/DS3Minimap.Core/DS3Minimap.Core.csproj" />
+    <Project Path="src/DS3Minimap.MapBaker/DS3Minimap.MapBaker.csproj" />
+    <Project Path="src/DS3Minimap.Memory/DS3Minimap.Memory.csproj" />
+    <Project Path="src/DS3Minimap.Rendering/DS3Minimap.Rendering.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/DS3Minimap.Tests/DS3Minimap.Tests.csproj" />
+  </Folder>
+</Solution>
+
