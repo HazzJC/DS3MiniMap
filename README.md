@@ -14,13 +14,17 @@ medical tool, but I hope it can make a first playthrough feel a little less
 disorienting for anyone who finds spatial navigation difficult.
 
 <p align="center">
-  <img src="docs/assets/ds3-minimap-journey.svg" width="760" alt="Illustrated preview of the minimap: a player marker, dotted trail, bonfire and item marker on a dark, textured map.">
+  <img src="docs/assets/ds3-minimap-demo.webp" width="400" alt="The minimap following a route near Overgrown Sanctum and on the High Wall of Lothric: real ground textures, a glowing trail with drifting motes, explored ground staying bright, a lit bonfire and an edge pointer to the nearest bonfire.">
+  <br>
+  <sub>A replay of routes recorded in real play, drawn by the minimap itself from local game data.
+  <a href="docs/assets/ds3-minimap-demo.mp4">Watch the full 52-second demo (MP4)</a>.</sub>
 </p>
 
 ## What it helps with
 
 - A clear player marker that turns as you turn.
-- A softly dotted trail showing the route you have just taken.
+- A softly glowing trail showing the route you have just taken, with small
+  motes of light drifting along it towards you.
 - The real ground of each area (stone, grass, ash, water) painted from your
   own copy of the game, with gentle shading for slopes, stairs and ledges.
 - Places you have already explored stay bright; places you have not are
