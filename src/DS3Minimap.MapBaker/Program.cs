@@ -8,31 +8,37 @@ namespace DS3Minimap.MapBaker;
 
 internal static class Program
 {
-    private static readonly (string Id, string Name)[] BaseMaps =
-    [
-        ("m30_00", "High Wall of Lothric / Lothric Castle / Grand Archives"),
-        ("m30_01", "Consumed King's Garden / Untended Graves"),
-        ("m31_00", "Undead Settlement"),
-        ("m32_00", "Archdragon Peak"),
-        ("m33_00", "Road of Sacrifices / Farron Keep"),
-        ("m34_01", "Grand Archives interior"),
-        ("m35_00", "Cathedral of the Deep"),
-        ("m37_00", "Irithyll of the Boreal Valley / Anor Londo"),
-        ("m38_00", "Catacombs of Carthus / Smouldering Lake"),
-        ("m39_00", "Irithyll Dungeon / Profaned Capital"),
-        ("m40_00", "Cemetery of Ash / Firelink Shrine"),
-        ("m41_00", "Kiln of the First Flame")
-    ];
-
     public static async Task<int> Main(string[] args)
     {
         try
         {
-            var gameDir = ValueAfter(args, "--game-dir") ?? throw new ArgumentException("Usage: --game-dir <DS3 Game directory> [--output <file>]");
             var output = ValueAfter(args, "--output") ?? AppPaths.MapPackage;
+            if (ValueAfter(args, "--audit-trail") is { } trailDatabase)
+            {
+                TrailCoverage.Report(await MapPackageSerializer.ReadAsync(output), trailDatabase);
+                return 0;
+            }
+            var gameDir = ValueAfter(args, "--game-dir") ?? throw new ArgumentException("Usage: --game-dir <DS3 Game directory> [--output <file>]");
             var previewDirectory = ValueAfter(args, "--preview-dir") ?? Path.Combine(Path.GetDirectoryName(output)!, "diagnostics");
             var force = args.Contains("--force", StringComparer.OrdinalIgnoreCase);
             ValidateGame(gameDir);
+            if (ValueAfter(args, "--bake-materials") is { } materialMap)
+            {
+                var maps = await MapPackageSerializer.ReadAsync(output);
+                var region = maps.Regions.Single(r => r.MapId == materialMap);
+                using var materialsArchive = new Ds3ArchiveReader(gameDir);
+                var atlas = new GroundMaterialBaker(region).Bake(materialsArchive, region.MapId, maps.GeneratedAt);
+                if (atlas.Tiles.Count == 0) throw new InvalidDataException($"No ground materials resolved for {materialMap}.");
+                await atlas.SaveAsync(ValueAfter(args, "--material-output") ?? GroundAtlas.CachePath(region.MapId, output));
+                if (ValueAfter(args, "--dump-material-tiles") is { } dumpDirectory) DumpMaterialTiles(atlas, dumpDirectory);
+                return 0;
+            }
+            if (args.Contains("--materials-only", StringComparer.OrdinalIgnoreCase))
+            {
+                // Existing installs: the map package is current, only textures are missing.
+                await BakeMaterialsAsync(await MapPackageSerializer.ReadAsync(output), gameDir, output, force);
+                return 0;
+            }
             var dumpMap = ValueAfter(args, "--dump-transforms");
             if (dumpMap is not null)
             {
@@ -55,8 +61,10 @@ internal static class Program
                 foreach (var file in sampleBinder.Files) Console.WriteLine($"FILE {file.Name} bytes={file.Bytes.Length}");
                 return 0;
             }
+            var installed = MapCatalog.InstalledArchives(gameDir);
+            var rebuild = force || !IsCurrent(output, gameDir);
             MapPackage package;
-            if (!force && IsCurrent(output, gameDir))
+            if (!rebuild)
             {
                 Console.WriteLine($"Map package is current: {output}");
                 package = await MapPackageSerializer.ReadAsync(output);
@@ -67,18 +75,19 @@ internal static class Program
                 var baker = new NavmeshBaker(archives);
                 var markerBaker = new MapMarkerBaker(gameDir, LocateMarkerAssets());
                 var regions = new List<MapRegion>();
-                foreach (var (id, name) in BaseMaps)
+                var ground = new CollisionGroundBaker(archives);
+                foreach (var (id, name, expansion) in MapCatalog.Maps)
                 {
+                    if (expansion is not null && !installed.Contains(expansion)) continue;
                     Console.WriteLine($"Baking {id}: {name}");
                     var region = baker.Bake(id, name);
                     var msb = MSB3.Read(archives.Read($"/map/mapstudio/{id}_00_00.msb.dcx"));
+                    region = ground.Bake(region, msb);
                     var markers = markerBaker.Bake(id, msb, region);
                     Console.WriteLine($"  markers: {markers.Count(marker => marker.Kind == MapMarkerKind.Bonfire)} bonfires, {markers.Count(marker => marker.Kind == MapMarkerKind.Item)} tracked pickups");
                     regions.Add(region with { Markers = markers });
                 }
-                package = new MapPackage(MapPackage.CurrentSchemaVersion, "1.15.2", DateTimeOffset.UnixEpoch, regions);
-                await MapPackageSerializer.WriteAtomicAsync(package, output);
-                Console.WriteLine($"Wrote {regions.Count} base-game regions to {output}");
+                package = new MapPackage(MapPackage.CurrentSchemaVersion, "1.15.2", DateTimeOffset.UtcNow, regions, installed);
             }
             var inspectPoint = ValueAfter(args, "--inspect-point");
             if (inspectPoint is not null)
@@ -101,13 +110,87 @@ internal static class Program
             Console.WriteLine($"Validation {(report.IsValid ? "passed" : "failed")}: {report.TotalPolygons:N0} polygons, {report.TotalPoints:N0} points.");
             Console.WriteLine($"Preview index: {Path.Combine(previewDirectory, "index.html")}");
             foreach (var issue in report.Issues) Console.Error.WriteLine("  " + issue);
+            if (report.IsValid && rebuild)
+            {
+                await MapPackageSerializer.WriteAtomicAsync(package, output);
+                Console.WriteLine($"Wrote {package.Regions.Count} regions to {output}");
+            }
+            if (report.IsValid && !args.Contains("--skip-materials", StringComparer.OrdinalIgnoreCase))
+                await BakeMaterialsAsync(package, gameDir, output, force);
             return report.IsValid ? 0 : 2;
         }
         catch (Exception exception)
         {
-            Console.Error.WriteLine("Map bake failed: " + exception.Message);
+            Console.Error.WriteLine("Map bake failed: " + exception);
             return 1;
         }
+    }
+
+    /// <summary>
+    /// Bakes the top-down ground textures for every map whose atlas is missing or
+    /// stale. A map that cannot be textured keeps the flat ground fill; it never
+    /// fails map preparation as a whole.
+    /// </summary>
+    private static async Task BakeMaterialsAsync(MapPackage package, string gameDir, string output, bool force)
+    {
+        var pending = new List<MapRegion>();
+        foreach (var region in package.Regions)
+            if (force || !await GroundAtlas.IsCurrentAsync(GroundAtlas.CachePath(region.MapId, output), region.MapId, package.GeneratedAt))
+                pending.Add(region);
+        if (pending.Count == 0)
+        {
+            Console.WriteLine("Ground textures are current.");
+            return;
+        }
+        Console.WriteLine($"Baking ground textures for {pending.Count} maps...");
+        using var archives = new Ds3ArchiveReader(gameDir);
+        int done = 0, failed = 0;
+        foreach (var region in pending)
+        {
+            Console.WriteLine($"Texturing {region.MapId}: {region.DisplayName} ({done + failed + 1}/{pending.Count})");
+            try
+            {
+                var atlas = new GroundMaterialBaker(region).Bake(archives, region.MapId, package.GeneratedAt);
+                if (atlas.Tiles.Count == 0) { Console.WriteLine("  no textured ground; flat shading will be used"); failed++; continue; }
+                await atlas.SaveAsync(GroundAtlas.CachePath(region.MapId, output));
+                done++;
+            }
+            catch (Exception exception) when (exception is not OutOfMemoryException)
+            {
+                // Textures are optional; a problem in one map must not stop the rest.
+                var reason = exception is AggregateException aggregate ? aggregate.Flatten().InnerExceptions[0] : exception;
+                Console.WriteLine($"  ground textures skipped: {reason.GetType().Name}: {reason.Message}");
+                failed++;
+            }
+            finally { GC.Collect(); }
+        }
+        Console.WriteLine($"Ground textures: {done}/{pending.Count} maps baked" + (failed > 0 ? $", {failed} use flat shading." : "."));
+    }
+
+    private static void DumpMaterialTiles(GroundAtlas atlas, string directory)
+    {
+        Directory.CreateDirectory(directory);
+        foreach (var tile in atlas.Tiles)
+            File.WriteAllBytes(Path.Combine(directory, $"{tile.Floor}_{tile.X}_{tile.Z}.webp"), tile.WebP);
+        // One stitched PNG per floor, at half resolution, for visual review.
+        const int half = GroundTile.Resolution / 2;
+        foreach (var floor in atlas.Tiles.GroupBy(tile => tile.Floor))
+        {
+            int minX = floor.Min(t => t.X), minZ = floor.Min(t => t.Z);
+            int width = (floor.Max(t => t.X) - minX + 1) * half, height = (floor.Max(t => t.Z) - minZ + 1) * half;
+            using var surface = SkiaSharp.SKSurface.Create(new SkiaSharp.SKImageInfo(width, height));
+            surface.Canvas.Clear(new SkiaSharp.SKColor(18, 21, 24));
+            foreach (var tile in floor)
+            {
+                using var image = SkiaSharp.SKImage.FromEncodedData(tile.WebP);
+                surface.Canvas.DrawImage(image, SkiaSharp.SKRect.Create((tile.X - minX) * half, (tile.Z - minZ) * half, half, half),
+                    new SkiaSharp.SKSamplingOptions(SkiaSharp.SKFilterMode.Linear, SkiaSharp.SKMipmapMode.Linear));
+            }
+            using var snapshot = surface.Snapshot();
+            using var png = snapshot.Encode(SkiaSharp.SKEncodedImageFormat.Png, 100);
+            File.WriteAllBytes(Path.Combine(directory, $"mosaic-{floor.Key}.png"), png.ToArray());
+        }
+        Console.WriteLine($"Dumped {atlas.Tiles.Count} tiles to {directory}");
     }
 
     private static void ValidateGame(string gameDir)
@@ -140,15 +223,11 @@ internal static class Program
         try
         {
             var package = MapPackageSerializer.ReadAsync(output).GetAwaiter().GetResult();
-            if (package.SchemaVersion != MapPackage.CurrentSchemaVersion) return false;
+            return package.SchemaVersion == MapPackage.CurrentSchemaVersion && MapCatalog.MatchesInstallation(package, gameDir, File.GetLastWriteTimeUtc(output));
         }
         catch (Exception exception) when (exception is IOException or InvalidDataException or System.Text.Json.JsonException)
         {
             return false;
         }
-        var packageTime = File.GetLastWriteTimeUtc(output);
-        return Enumerable.Range(0, 6)
-            .SelectMany(index => new[] { Path.Combine(gameDir, $"Data{index}.bhd"), Path.Combine(gameDir, $"Data{index}.bdt") })
-            .All(path => File.Exists(path) && File.GetLastWriteTimeUtc(path) <= packageTime);
     }
 }

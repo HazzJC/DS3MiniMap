@@ -1,4 +1,4 @@
-using System.ComponentModel;
+﻿using System.ComponentModel;
 using System.Diagnostics;
 using System.IO;
 using System.Windows;
@@ -14,13 +14,15 @@ internal sealed class MapBakeWindow : Window
     private readonly TextBox _output;
     private readonly ProgressBar _progress;
     private readonly Button _close;
+    private readonly bool _texturesOnly;
     private bool _running;
 
-    internal MapBakeWindow(string baker, string gameDirectory)
+    internal MapBakeWindow(string baker, string gameDirectory, bool texturesOnly = false)
     {
         _baker = baker;
         _gameDirectory = gameDirectory;
-        Title = "DS3 Minimap — preparing local maps";
+        _texturesOnly = texturesOnly;
+        Title = "DS3 Minimap â€” preparing local maps";
         Width = 640;
         Height = 420;
         MinWidth = 560;
@@ -33,14 +35,16 @@ internal sealed class MapBakeWindow : Window
         var panel = new DockPanel { Margin = new Thickness(26, 22, 26, 24) };
         var heading = new TextBlock
         {
-            Text = "PREPARING YOUR LOCAL MAP PACKAGE", FontSize = 20, Foreground = Brush("#D7BE83"),
+            Text = texturesOnly ? "PREPARING GROUND TEXTURES" : "PREPARING YOUR LOCAL MAP PACKAGE", FontSize = 20, Foreground = Brush("#D7BE83"),
             Margin = new Thickness(0, 0, 0, 7)
         };
         DockPanel.SetDock(heading, Dock.Top);
         panel.Children.Add(heading);
         var note = new TextBlock
         {
-            Text = "This happens once per DS3 version. DS3 files are read in place and are never changed.",
+            Text = texturesOnly
+                ? "The minimap is painting real ground textures from your game, once. This takes a few minutes; DS3 files are read in place and never changed. You can close this window afterwards and play."
+                : "This happens once per DS3 version. It reads your maps and then paints their real ground textures. DS3 files are read in place and are never changed.",
             Foreground = Brush("#BCAE91"), TextWrapping = TextWrapping.Wrap, Margin = new Thickness(0, 0, 0, 14)
         };
         DockPanel.SetDock(note, Dock.Top);
@@ -48,7 +52,7 @@ internal sealed class MapBakeWindow : Window
         _progress = new ProgressBar { Height = 7, IsIndeterminate = true, Margin = new Thickness(0, 0, 0, 12) };
         DockPanel.SetDock(_progress, Dock.Top);
         panel.Children.Add(_progress);
-        _close = new Button { Content = "Preparing…", IsEnabled = false, MinWidth = 110, Padding = new Thickness(12, 5, 12, 5) };
+        _close = new Button { Content = "Preparingâ€¦", IsEnabled = false, MinWidth = 110, Padding = new Thickness(12, 5, 12, 5) };
         _close.Click += (_, _) => Close();
         DockPanel.SetDock(_close, Dock.Bottom);
         panel.Children.Add(_close);
@@ -80,6 +84,7 @@ internal sealed class MapBakeWindow : Window
             };
             start.ArgumentList.Add("--game-dir");
             start.ArgumentList.Add(_gameDirectory);
+            if (_texturesOnly) start.ArgumentList.Add("--materials-only");
             using var process = Process.Start(start) ?? throw new InvalidOperationException("The bundled map-preparation process could not start.");
             var stdout = PumpAsync(process.StandardOutput);
             var stderr = PumpAsync(process.StandardError);

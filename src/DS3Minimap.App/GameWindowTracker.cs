@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using DS3Minimap.Core;
 using System.Runtime.InteropServices;
 
 namespace DS3Minimap.App;
@@ -25,6 +26,21 @@ internal static partial class GameWindowTracker
             return null;
         }
     }
+
+    internal static void PlaceOverlay(nint overlay, GameWindowState game, AppSettings settings)
+    {
+        if (game.Minimized || game.Width <= 0 || game.Height <= 0) return;
+        var monitor = MonitorFromWindow(game.Handle, 2);
+        var scale = GetDpiForMonitor(monitor, 0, out var dpi, out _) == 0 ? dpi / 96d : 1;
+        var bounds = OverlayPlacement.Fit(game.X, game.Y, game.Width, game.Height, scale, settings);
+        if (GetWindowRect(overlay, out var rect) && rect.Left == bounds.X && rect.Top == bounds.Y
+            && rect.Right - rect.Left == bounds.Size && rect.Bottom - rect.Top == bounds.Size) return;
+        SetWindowPos(overlay, 0, bounds.X, bounds.Y, bounds.Size, bounds.Size, 0x0004 | 0x0010);
+    }
+
+    [LibraryImport("user32.dll")] private static partial nint MonitorFromWindow(nint window, uint flags);
+    [LibraryImport("shcore.dll")] private static partial int GetDpiForMonitor(nint monitor, int type, out uint dpiX, out uint dpiY);
+    [LibraryImport("user32.dll")][return: MarshalAs(UnmanagedType.Bool)] private static partial bool GetWindowRect(nint window, out Rect rect);
 
     internal static void ApplyBorderless(nint window)
     {

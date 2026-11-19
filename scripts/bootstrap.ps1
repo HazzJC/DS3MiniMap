@@ -150,7 +150,7 @@ try {
         } elseif (-not (Test-GameComplete $detectedGame)) {
             Write-Warning 'Steam download incomplete. Build succeeded; rerun this command after Steam finishes.'
         } else {
-            Invoke-Checked $dotnet @('run', '--project', 'src/DS3Minimap.MapBaker', '-c', 'Release', '--no-build', '--', '--game-dir', $detectedGame)
+            Invoke-Checked $dotnet @('artifacts/bin/Release/net10.0/win-x64/DS3Minimap.MapBaker.dll', '--game-dir', $detectedGame)
         }
     }
     Write-Host 'DS3 Minimap bootstrap completed successfully.' -ForegroundColor Green

@@ -63,6 +63,8 @@ internal sealed class MapMarkerBaker
 
         foreach (var row in _bonfires.Rows)
         {
+            // The initial High Wall warp sits at Y=-999 under the actual bonfire (row 6).
+            if (mapId == "m30_00" && row.ID == 7) continue;
             var entityId = CellInt(row, "bonfireEntityId");
             if (entityId <= 0 || !partsByEntity.TryGetValue(entityId, out var part)) continue;
             var flagId = CellInt(row, "eventflagId");

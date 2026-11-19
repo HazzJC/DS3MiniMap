@@ -1,4 +1,4 @@
-using System.Numerics;
+﻿using System.Numerics;
 using DS3Minimap.Core;
 using DS3Minimap.Memory;
 using Xunit;
@@ -16,6 +16,9 @@ public sealed class CoreTests
     }
 
     [Theory]
+    [InlineData(0, 0, 1, 51, "m51_01")]
+    [InlineData(45, 0, 0, 0, "m45_00")]
+    [InlineData(54, 0, 0, 0, "m54_00")]
     [InlineData(30, 0, 0, 0, "m30_00")]
     [InlineData(0, 30, 0, 0, "m30_00")]
     [InlineData(0, 0, 34, 1, "m34_01")]
@@ -142,7 +145,7 @@ public sealed class CoreTests
             await File.WriteAllTextAsync(temporary, """{"schemaVersion":2,"trailLifetimeMinutes":999,"fadeTrailWithAge":true,"mapTextureStrength":9,"layerTransitionMilliseconds":9000}""",
                 TestContext.Current.CancellationToken);
             var settings = await new SettingsStore(temporary).LoadAsync(TestContext.Current.CancellationToken);
-            Assert.Equal(5, settings.SchemaVersion);
+            Assert.Equal(AppSettings.CurrentSchemaVersion, settings.SchemaVersion);
             Assert.Equal(180, settings.TrailLifetimeMinutes);
             Assert.True(settings.FadeTrailWithAge);
             Assert.Equal(1, settings.MapTextureStrength);
@@ -151,6 +154,90 @@ public sealed class CoreTests
             Assert.False(settings.ShowUncollectedItems);
         }
         finally { File.Delete(temporary); }
+    }
+
+    [Fact]
+    public async Task SettingsFromVersionFiveGainTextureAndMemoryAidDefaults()
+    {
+        var temporary = Path.Combine(Path.GetTempPath(), $"ds3-minimap-settings-{Guid.NewGuid():N}.json");
+        try
+        {
+            await File.WriteAllTextAsync(temporary, """{"schemaVersion":5,"showBonfires":true,"textureToning":4,"fogOfWarStrength":-1,"trailStyle":0}""",
+                TestContext.Current.CancellationToken);
+            var settings = await new SettingsStore(temporary).LoadAsync(TestContext.Current.CancellationToken);
+            Assert.Equal(AppSettings.CurrentSchemaVersion, settings.SchemaVersion);
+            Assert.Equal(TrailStyle.Soul, settings.TrailStyle);
+            Assert.Equal(GroundStyle.RealTextures, settings.GroundStyle);
+            Assert.Equal(1, settings.TextureToning);
+            Assert.Equal(0, settings.FogOfWarStrength);
+            Assert.True(settings.FogOfWar);
+            Assert.True(settings.ShowUnlitBonfires);
+            Assert.True(settings.ShowNearestBonfirePointer);
+        }
+        finally { File.Delete(temporary); }
+    }
+
+    [Fact]
+    public void ExploredAreaRevealsCellsAroundThePlayerOnItsOwnFloor()
+    {
+        var area = new ExploredArea();
+        var added = area.Reveal("m40_00", "floor-1", new Vector3(1, 0, 1));
+        Assert.NotEmpty(added);
+        var cells = area.Cells("m40_00", "floor-1")!;
+        Assert.Contains(ExploredArea.Key(0, 0), cells);
+        // Cells beyond the reveal radius stay hidden, and other floors are untouched.
+        Assert.DoesNotContain(ExploredArea.Key(10, 0), cells);
+        Assert.Null(area.Cells("m40_00", "floor-2"));
+        var version = area.Version;
+        Assert.Empty(area.Reveal("m40_00", "floor-1", new Vector3(1, 0, 1)));
+        Assert.Equal(version, area.Version);
+        Assert.Equal((-3, 7), ExploredArea.Unpack(ExploredArea.Key(-3, 7)));
+    }
+
+    [Fact]
+    public async Task GroundAtlasRoundTripsAndReportsStaleness()
+    {
+        var temporary = Path.Combine(Path.GetTempPath(), $"ds3-minimap-{Guid.NewGuid():N}.atlas");
+        try
+        {
+            var generation = DateTimeOffset.UnixEpoch.AddDays(3);
+            var atlas = new GroundAtlas(GroundAtlas.CurrentVersion, "m40_00", generation, [new GroundTile("floor-1", 2, -1, [1, 2, 3])]);
+            await atlas.SaveAsync(temporary);
+            var loaded = await GroundAtlas.ReadAsync(temporary, TestContext.Current.CancellationToken);
+            Assert.Equal([1, 2, 3], Assert.Single(loaded!.Tiles).WebP);
+            Assert.True(await GroundAtlas.IsCurrentAsync(temporary, "m40_00", generation, TestContext.Current.CancellationToken));
+            Assert.False(await GroundAtlas.IsCurrentAsync(temporary, "m40_00", generation.AddSeconds(1), TestContext.Current.CancellationToken));
+            Assert.False(await GroundAtlas.IsCurrentAsync(temporary + ".missing", "m40_00", generation, TestContext.Current.CancellationToken));
+        }
+        finally { File.Delete(temporary); }
+    }
+
+    [Fact]
+    public void CollisionGroundSeparatesStackedFloorsOutsideNavigation()
+    {
+        var lower = new MapLayer("lower", "Lower", -5, 16, [], [new CollisionRun(-8, 2, -2, 0)]);
+        var upper = new MapLayer("upper", "Upper", -5, 16, [], [new CollisionRun(-8, 2, -2, 20)]);
+        var region = new MapRegion("test", "Stack", [lower, upper]);
+        Assert.Same(upper, LayerSelector.Select(region, new Vector3(-0.2f, 10, -0.8f)));
+        Assert.Same(lower, LayerSelector.Select(region, new Vector3(-0.2f, 0, -0.8f)));
+    }
+
+    [Theory]
+    [InlineData(1920, 1080, 1, 320, -344, 24)]
+    [InlineData(2560, 1440, 1.5, 480, -516, 36)]
+    [InlineData(320, 160, 2, 120, -140, 20)]
+    public void OverlayFitsClientOnLeftHandMonitor(int w, int h, double scale, int size, int x, int y)
+    {
+        Assert.Equal(new OverlayPlacement(x, y, size), OverlayPlacement.Fit(-w, 0, w, h, scale, new AppSettings()));
+    }
+
+    [Fact]
+    public void TurningInPlaceUpdatesHeading()
+    {
+        var tracker = new HeadingTracker();
+        var player = Telemetry(DateTimeOffset.UnixEpoch, Vector3.Zero);
+        tracker.Update(player);
+        Assert.Equal(MathF.PI / 2, tracker.Update(player with { Heading = MathF.PI / 2 }), 5);
     }
 
     private static PlayerTelemetry Telemetry(DateTimeOffset timestamp, Vector3 position) =>

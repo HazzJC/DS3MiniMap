@@ -35,7 +35,7 @@ public sealed class TrailRecorder
             var distance = Vector3.Distance(previous.Position, telemetry.Position);
             var contextChanged = previous.MapId != telemetry.MapId || previous.LayerId != layerId;
             if (contextChanged || distance >= TeleportDistance) _segment++;
-            else if (elapsed < MinimumInterval || distance < MinimumDistance) return null;
+            else if (previous.Segment == _segment && (elapsed < MinimumInterval || distance < MinimumDistance)) return null;
         }
 
         var point = new TrailPoint(++_sequence, telemetry.Timestamp, telemetry.Position, telemetry.MapId, layerId, _segment);
@@ -73,7 +73,60 @@ public sealed class TrailStore(string databasePath)
                 map_id TEXT NOT NULL, layer_id TEXT NOT NULL, segment INTEGER NOT NULL,
                 PRIMARY KEY(session_id, sequence)
             );
+            CREATE TABLE IF NOT EXISTS explored_cells (
+                character_name TEXT NOT NULL,
+                map_id TEXT NOT NULL, layer_id TEXT NOT NULL,
+                cx INTEGER NOT NULL, cz INTEGER NOT NULL,
+                PRIMARY KEY(character_name, map_id, layer_id, cx, cz)
+            );
             """;
+        await command.ExecuteNonQueryAsync(cancellationToken);
+    }
+
+    public async Task AppendExploredAsync(string characterName, string mapId, string layerId,
+        IReadOnlyList<(int X, int Z)> cells, CancellationToken cancellationToken = default)
+    {
+        if (cells.Count == 0) return;
+        await using var connection = new SqliteConnection(ConnectionString);
+        await connection.OpenAsync(cancellationToken);
+        await using var transaction = connection.BeginTransaction();
+        var command = connection.CreateCommand();
+        command.Transaction = transaction;
+        command.CommandText = "INSERT OR IGNORE INTO explored_cells (character_name, map_id, layer_id, cx, cz) VALUES ($character, $map, $layer, $x, $z)";
+        var character = command.Parameters.Add("$character", SqliteType.Text);
+        var map = command.Parameters.Add("$map", SqliteType.Text);
+        var layer = command.Parameters.Add("$layer", SqliteType.Text);
+        var x = command.Parameters.Add("$x", SqliteType.Integer);
+        var z = command.Parameters.Add("$z", SqliteType.Integer);
+        character.Value = characterName; map.Value = mapId; layer.Value = layerId;
+        foreach (var cell in cells)
+        {
+            x.Value = cell.X;
+            z.Value = cell.Z;
+            await command.ExecuteNonQueryAsync(cancellationToken);
+        }
+        await transaction.CommitAsync(cancellationToken);
+    }
+
+    public async Task LoadExploredAsync(string characterName, ExploredArea area, CancellationToken cancellationToken = default)
+    {
+        await using var connection = new SqliteConnection(ConnectionString);
+        await connection.OpenAsync(cancellationToken);
+        var command = connection.CreateCommand();
+        command.CommandText = "SELECT map_id, layer_id, cx, cz FROM explored_cells WHERE character_name = $character";
+        command.Parameters.AddWithValue("$character", characterName);
+        await using var reader = await command.ExecuteReaderAsync(cancellationToken);
+        while (await reader.ReadAsync(cancellationToken))
+            area.Add(reader.GetString(0), reader.GetString(1), reader.GetInt32(2), reader.GetInt32(3));
+    }
+
+    public async Task ClearExploredAsync(string characterName, CancellationToken cancellationToken = default)
+    {
+        await using var connection = new SqliteConnection(ConnectionString);
+        await connection.OpenAsync(cancellationToken);
+        var command = connection.CreateCommand();
+        command.CommandText = "DELETE FROM explored_cells WHERE character_name = $character";
+        command.Parameters.AddWithValue("$character", characterName);
         await command.ExecuteNonQueryAsync(cancellationToken);
     }
 
@@ -107,7 +160,7 @@ public static class TrailExporter
     {
         Directory.CreateDirectory(Path.GetDirectoryName(path) ?? ".");
         await using var stream = File.Create(path);
-        await JsonSerializer.SerializeAsync(stream, points, cancellationToken: cancellationToken);
+        await JsonSerializer.SerializeAsync(stream, points, new JsonSerializerOptions { IncludeFields = true }, cancellationToken);
     }
 
     public static async Task ExportCsvAsync(IEnumerable<TrailPoint> points, string path, CancellationToken cancellationToken = default)

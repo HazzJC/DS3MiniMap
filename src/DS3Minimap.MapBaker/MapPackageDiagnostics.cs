@@ -8,8 +8,6 @@ namespace DS3Minimap.MapBaker;
 
 internal static class MapPackageDiagnostics
 {
-    private static readonly string[] ExpectedMapIds =
-    ["m30_00", "m30_01", "m31_00", "m32_00", "m33_00", "m34_01", "m35_00", "m37_00", "m38_00", "m39_00", "m40_00", "m41_00"];
     internal static async Task<MapValidationReport> ValidateAndWritePreviewsAsync(MapPackage package, string directory)
     {
         Directory.CreateDirectory(directory);
@@ -28,10 +26,12 @@ internal static class MapPackageDiagnostics
             issues.Add($"Schema version {package.SchemaVersion} is unsupported.");
         if (package.GameVersion != "1.15.2") issues.Add($"Unexpected game version {package.GameVersion}.");
 
-        foreach (var expected in ExpectedMapIds)
-            if (package.Regions.All(region => region.MapId != expected)) issues.Add($"Missing required base-game map {expected}.");
-        foreach (var extra in package.Regions.Where(region => !ExpectedMapIds.Contains(region.MapId)))
-            issues.Add($"Unexpected non-base-game map {extra.MapId}.");
+        var expectedIds = MapCatalog.Maps.Where(map => map.Expansion is null || package.Archives?.Contains(map.Expansion) == true)
+            .Select(map => map.Id).ToHashSet(StringComparer.Ordinal);
+        foreach (var expected in expectedIds)
+            if (package.Regions.All(region => region.MapId != expected)) issues.Add($"Missing required map {expected}.");
+        foreach (var extra in package.Regions.Where(region => !expectedIds.Contains(region.MapId)))
+            issues.Add($"Unexpected map {extra.MapId}.");
 
         foreach (var region in package.Regions.OrderBy(region => region.MapId, StringComparer.Ordinal))
         {
@@ -53,14 +53,35 @@ internal static class MapPackageDiagnostics
             var maxY = region.Layers.Count == 0 ? 0 : region.Layers.Max(layer => layer.MaximumY);
 
             if (region.Layers.Count == 0) issues.Add($"{region.MapId} has no elevation layers.");
-            if (polygons < 100) issues.Add($"{region.MapId} has suspiciously few polygons ({polygons}).");
+            var groundCells = region.Layers.SelectMany(l => l.Ground ?? []).Sum(run => run.EndX - run.X);
+            if (groundCells <= 0) issues.Add($"{region.MapId} has no navigation-aligned collision ground.");
+            if (polygons < (MapCatalog.Maps.Any(m => m.Id == region.MapId && m.Expansion == null) ? 100 : 1)) issues.Add($"{region.MapId} has suspiciously few polygons ({polygons}).");
             if (invalidPolygons > 0) issues.Add($"{region.MapId} has {invalidPolygons} polygons with fewer than three points.");
             if (invalidCoordinates > 0) issues.Add($"{region.MapId} has {invalidCoordinates} invalid coordinates.");
             if (maxX - minX < 10 || maxZ - minZ < 10) issues.Add($"{region.MapId} has a suspiciously small X/Z extent.");
             if (invalidMarkers > 0) issues.Add($"{region.MapId} has {invalidMarkers} invalid markers.");
 
+            var unaligned = markers.Where(marker =>
+            {
+                var layer = region.Layers.FirstOrDefault(l => l.Id == marker.LayerId);
+                if (layer?.Ground is not { } ground) return true;
+                const float unit = CollisionRun.CellSize;
+                const float tolerance = 2;
+                for (int i = CollisionRun.FirstRow(ground, (int)MathF.Floor((marker.Z - tolerance) / unit));
+                     i < ground.Count && ground[i].Z * unit <= marker.Z + tolerance; i++)
+                {
+                    var run = ground[i];
+                    if (MathF.Abs(run.Y * unit - marker.Y) <= tolerance && run.X * unit <= marker.X + tolerance
+                        && run.EndX * unit >= marker.X - tolerance) return false;
+                }
+                return true;
+            }).Select(marker => marker.Id).ToArray();
+
+            foreach (var marker in markers.Where(m => m.Kind == MapMarkerKind.Bonfire && unaligned.Contains(m.Id)))
+                issues.Add($"{region.MapId} bonfire {marker.Id} ({marker.Label}) needs review: no collision ground within 2 units on {marker.LayerId}.");
+
             var result = new RegionValidation(region.MapId, region.DisplayName, region.Layers.Count, polygons, points.Length,
-                minX, maxX, minZ, maxZ, minY, maxY, invalidPolygons, invalidCoordinates, bonfireCount, itemCount, invalidMarkers);
+                minX, maxX, minZ, maxZ, minY, maxY, invalidPolygons, invalidCoordinates, bonfireCount, itemCount, invalidMarkers, groundCells, unaligned);
             regions.Add(result);
             await WriteSvgAsync(region, result, Path.Combine(combinedDirectory, region.MapId + ".svg"), region.Layers);
             foreach (var layer in region.Layers)
@@ -126,7 +147,11 @@ internal static class MapPackageDiagnostics
         for (var layerIndex = 0; layerIndex < layers.Count; layerIndex++)
         {
             var layer = layers[layerIndex];
-            var color = palette[layerIndex % palette.Length];
+            var color = palette[region.Layers.ToList().IndexOf(layer) % palette.Length];
+            await writer.WriteAsync("<path fill=\"#77716b\" d=\"");
+            foreach (var run in layer.Ground ?? [])
+                await writer.WriteAsync(FormattableString.Invariant($"M{run.X * CollisionRun.CellSize} {run.Z * CollisionRun.CellSize}h{(run.EndX - run.X) * CollisionRun.CellSize}v0.5H{run.X * CollisionRun.CellSize}Z"));
+            await writer.WriteLineAsync("\"/>");
             await writer.WriteLineAsync(FormattableString.Invariant($"<g id=\"{Escape(layer.Id)}\" fill=\"{color}\" fill-opacity=\"0.62\" stroke=\"#17130f\" stroke-width=\"{stroke}\" stroke-linejoin=\"round\" filter=\"url(#ground-clouds)\">"));
             foreach (var polygon in layer.Polygons)
             {
@@ -160,7 +185,7 @@ internal static class MapPackageDiagnostics
             .Append(report.IsValid ? "PASS" : "FAIL").Append("</strong> - ")
             .Append(report.TotalPolygons.ToString("N0", CultureInfo.InvariantCulture)).Append(" polygons across ")
             .Append(report.RegionCount).Append(" regions; ").Append(report.TotalBonfires).Append(" bonfires and ")
-            .Append(report.TotalItems).Append(" tracked pickups.</p><p>Every primary preview is navigation-only. Different colours represent cloud-textured elevation layers; flame-and-sword symbols are bonfires and pale wisps are pickup locations.</p><p><a href=\"validation-report.json\">Full JSON report</a> | <a href=\"README.md\">Review guide</a></p><div class=\"grid\">");
+            .Append(report.TotalItems).Append(" tracked pickups.</p><p>Grey shows connected collision ground. Different colours represent cloud-textured elevation layers; flame-and-sword symbols are bonfires and pale wisps are pickup locations.</p><p><a href=\"validation-report.json\">Full JSON report</a> | <a href=\"README.md\">Review guide</a></p><div class=\"grid\">");
         foreach (var region in report.Regions)
         {
             html.Append("<section class=\"card\"><h2>").Append(Escape(region.MapId)).Append("</h2><p>")
@@ -188,7 +213,7 @@ internal static class MapPackageDiagnostics
             - `layers/` contains one identically framed SVG for each generated elevation layer.
             - `validation-report.json` contains dimensions and geometry counts for automated comparison.
 
-            The package and previews are navigation-only. Visual FLVER map pieces were removed because DS3 includes sky domes, horizon cards, distant scenery and other non-floor meshes that create misleading top-down hulls. Important: AI navigation is not player collision, so intentional exclusions can still look like holes where the player can stand.
+            Grey ground is sampled from upward-facing static collision connected to navigation geometry. Elevation colours show the underlying navigation layer. Dynamic platforms and isolated collision can be absent.
 
             Open `index.html` in a browser. SVG files can be opened in browsers, Inkscape, Illustrator, or image-comparison tools without losing detail.
             """;
@@ -204,4 +229,4 @@ internal sealed record MapValidationReport(int SchemaVersion, string GameVersion
 
 internal sealed record RegionValidation(string MapId, string DisplayName, int LayerCount, int PolygonCount, int PointCount,
     float MinimumX, float MaximumX, float MinimumZ, float MaximumZ, float MinimumY, float MaximumY,
-    int InvalidPolygonCount, int InvalidCoordinateCount, int BonfireCount, int ItemCount, int InvalidMarkerCount);
+    int InvalidPolygonCount, int InvalidCoordinateCount, int BonfireCount, int ItemCount, int InvalidMarkerCount, int CollisionCells, IReadOnlyList<string> MarkersOutsideGroundTolerance);

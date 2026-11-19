@@ -5,7 +5,7 @@ using System.Text.Json.Serialization;
 
 namespace DS3Minimap.Core;
 
-public sealed record MapPoint(float X, float Z);
+public sealed record MapPoint(float X, float Z, float Y = 0);
 
 public sealed record MapPolygon(
     string Id,
@@ -13,12 +13,31 @@ public sealed record MapPolygon(
     float MaximumY,
     IReadOnlyList<MapPoint> Points);
 
+// A horizontal run of half-unit collision cells at a half-unit elevation.
+public readonly record struct CollisionRun(int X, int EndX, int Z, int Y)
+{
+    public const float CellSize = 0.5f;
+
+    public static int FirstRow(IReadOnlyList<CollisionRun> runs, int z)
+    {
+        int low = 0, high = runs.Count;
+        while (low < high)
+        {
+            int mid = low + (high - low) / 2;
+            if (runs[mid].Z < z) low = mid + 1;
+            else high = mid;
+        }
+        return low;
+    }
+}
+
 public sealed record MapLayer(
     string Id,
     string DisplayName,
     float MinimumY,
     float MaximumY,
-    IReadOnlyList<MapPolygon> Polygons);
+    IReadOnlyList<MapPolygon> Polygons,
+    IReadOnlyList<CollisionRun>? Ground = null);
 
 public enum MapMarkerKind
 {
@@ -53,9 +72,10 @@ public sealed record MapPackage(
     int SchemaVersion,
     string GameVersion,
     DateTimeOffset GeneratedAt,
-    IReadOnlyList<MapRegion> Regions)
+    IReadOnlyList<MapRegion> Regions,
+    IReadOnlyList<string>? Archives = null)
 {
-    public const int CurrentSchemaVersion = 4;
+    public const int CurrentSchemaVersion = 6;
 }
 
 public static class MapPackageSerializer
@@ -161,11 +181,44 @@ public static class LayerSelector
         var bestVertical = float.PositiveInfinity;
         var bestScore = float.PositiveInfinity;
 
+        if (layer.Ground is { Count: > 0 } runs)
+        {
+            int x = (int)MathF.Floor(point.X / CollisionRun.CellSize);
+            int z = (int)MathF.Floor(point.Z / CollisionRun.CellSize);
+            for (int i = CollisionRun.FirstRow(runs, z); i < runs.Count && runs[i].Z == z; i++)
+            {
+                var run = runs[i];
+                if (x < run.X || x >= run.EndX) continue;
+                var dy = MathF.Abs(run.Y * CollisionRun.CellSize - playerY);
+                if (dy * 2 >= bestScore) continue;
+                bestHorizontal = 0;
+                bestVertical = dy;
+                bestScore = dy * 2;
+            }
+        }
+
         foreach (var polygon in layer.Polygons)
         {
             if (polygon.Points.Count < 3) continue;
-            var horizontal = Contains(point, polygon.Points) ? 0f : DistanceToEdges(point, polygon.Points);
             var vertical = DistanceToRange(playerY, polygon.MinimumY, polygon.MaximumY);
+            if (vertical * 2 >= bestScore) continue;
+            bool inside = Contains(point, polygon.Points);
+            if (inside && polygon.MinimumY < polygon.MaximumY && polygon.Points.Any(p => p.Y != 0))
+            {
+                var a = polygon.Points[0];
+                for (var i = 2; i < polygon.Points.Count; i++)
+                {
+                    var b = polygon.Points[i - 1];
+                    var c = polygon.Points[i];
+                    var normal = Vector3.Cross(new Vector3(b.X - a.X, b.Y - a.Y, b.Z - a.Z),
+                        new Vector3(c.X - a.X, c.Y - a.Y, c.Z - a.Z));
+                    if (MathF.Abs(normal.Y) < 0.0001f) continue;
+                    var height = a.Y - (normal.X * (point.X - a.X) + normal.Z * (point.Z - a.Z)) / normal.Y;
+                    vertical = MathF.Abs(playerY - height);
+                    break;
+                }
+            }
+            var horizontal = inside ? 0f : DistanceToEdges(point, polygon.Points);
 
             // A unit of elevation error is more suspicious than a unit of lateral
             // navmesh clearance. This still permits small gaps around props, map-piece
@@ -249,6 +302,7 @@ public sealed class HeadingTracker
     private Vector3? _anchor;
     private string? _mapId;
     private float _screenHeading;
+    private float _lastYaw;
 
     public float Update(PlayerTelemetry player)
     {
@@ -256,6 +310,7 @@ public sealed class HeadingTracker
         {
             _mapId = player.MapId;
             _anchor = player.Position;
+            _lastYaw = player.Heading;
             _screenHeading = MapTransform.HeadingToScreenRadians(player.Heading);
             return _screenHeading;
         }
@@ -273,6 +328,8 @@ public sealed class HeadingTracker
             _screenHeading = MapTransform.HeadingToScreenRadians(player.Heading);
             _anchor = player.Position;
         }
+        else _screenHeading -= MathF.IEEERemainder(player.Heading - _lastYaw, 2 * MathF.PI);
+        _lastYaw = player.Heading;
         return _screenHeading;
     }
 }

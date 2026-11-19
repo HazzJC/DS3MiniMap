@@ -1,6 +1,6 @@
 [CmdletBinding()]
 param(
-    [string]$Version = '1.0.0',
+    [string]$Version = '1.2.0',
     [string]$InnoSetupCompiler,
     [switch]$SkipTests
 )
@@ -40,6 +40,7 @@ New-Item -ItemType Directory -Force -Path $staging, $output | Out-Null
 
 Push-Location $repo
 try {
+    $env:NUGET_PACKAGES = Join-Path $repo '.cache\nuget'
     $env:DOTNET_ROOT = Join-Path $repo '.tools\dotnet'
     $env:PATH = "$env:DOTNET_ROOT;$env:PATH"
     Invoke-Checked $dotnet @('restore', 'DS3Minimap.slnx', '--locked-mode')

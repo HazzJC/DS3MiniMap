@@ -10,3 +10,5 @@ Archives DS3 table were consulted as behavioural and reverse-engineering
 references. Their source is not linked into or copied into this application.
 The implementation here independently performs read-only process access and
 retains this project's MIT licence.
+
+The public DS3 archive header keys used by the local baker are documented in [UXM’s archive key table](https://github.com/JKAnderson/UXM/blob/master/UXM/ArchiveKeys.cs).

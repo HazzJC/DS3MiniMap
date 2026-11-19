@@ -33,25 +33,27 @@ internal sealed class NavmeshBaker(Ds3ArchiveReader archives)
         var binder = BND4.Read(DCX.Decompress(compressed));
         var rawPolygons = new List<RawPolygon>();
 
-        foreach (var file in binder.Files.Where(item => item.Bytes.Length > 0 && (item.Name?.EndsWith(".hkx", StringComparison.OrdinalIgnoreCase) ?? true)))
+        var placementFile = NVA.Read(archives.Read($"/map/{resourceId}/{resourceId}.nva.dcx"));
+        var files = binder.Files.Where(f => f.Name != null)
+            .ToLookup(f => Path.GetFileName(f.Name!), StringComparer.OrdinalIgnoreCase);
+        foreach (var group in placementFile.NavmeshInfoEntries.GroupBy(entry => entry.ModelID))
         {
-            try
+            var name = $"n{resourceId[1..]}_{group.Key:D6}.hkx";
+            var file = files[name].FirstOrDefault();
+            if (file is null && group.All(entry => entry.NameID == -1 && entry.FaceCount == 0)) continue;
+            if (file is null) throw new InvalidDataException($"Missing placed navmesh {name}.");
+            var root = new PackFileDeserializer().Deserialize(new BinaryReaderEx(false, file.Bytes));
+            var meshes = FindMeshes(root).Distinct().ToArray();
+            foreach (var entry in group)
             {
-                var reader = new BinaryReaderEx(false, file.Bytes);
-                var root = new PackFileDeserializer().Deserialize(reader);
-                foreach (var mesh in FindMeshes(root)) AppendMesh(mesh, rawPolygons);
-            }
-            catch (Exception exception) when (exception is InvalidDataException or NotSupportedException or KeyNotFoundException)
-            {
-                Console.WriteLine($"  skipped unsupported HKX {file.Name ?? file.ID.ToString()}: {exception.Message}");
+                var transform = Matrix4x4.CreateScale(entry.Scale)
+                    * Matrix4x4.CreateRotationX(entry.Rotation.X) * Matrix4x4.CreateRotationZ(entry.Rotation.Z)
+                    * Matrix4x4.CreateRotationY(entry.Rotation.Y) * Matrix4x4.CreateTranslation(entry.Position);
+                foreach (var mesh in meshes) AppendMesh(mesh, transform, rawPolygons);
             }
         }
 
         if (rawPolygons.Count == 0) throw new InvalidDataException($"No navigation polygons were decoded for {mapId}.");
-        // Visual FLVER map pieces include sky domes, horizon cards and distant
-        // scenery. Their top-down convex hulls are not reliable floor geometry.
-        // Keep the distributable package navigation-only until player collision
-        // extraction is implemented.
         return new MapRegion(mapId, displayName, BuildLayers(rawPolygons));
     }
 
@@ -68,7 +70,7 @@ internal sealed class NavmeshBaker(Ds3ArchiveReader archives)
         }
     }
 
-    private static void AppendMesh(hkaiNavMesh mesh, ICollection<RawPolygon> destination)
+    private static void AppendMesh(hkaiNavMesh mesh, Matrix4x4 transform, ICollection<RawPolygon> destination)
     {
         foreach (var face in mesh.m_faces)
         {
@@ -81,7 +83,7 @@ internal sealed class NavmeshBaker(Ds3ArchiveReader archives)
                 var vertexIndex = mesh.m_edges[edgeIndex].m_a;
                 if ((uint)vertexIndex >= mesh.m_vertices.Count) break;
                 var value = mesh.m_vertices[vertexIndex];
-                vertices.Add(new Vector3(value.X, value.Y, value.Z));
+                vertices.Add(Vector3.Transform(new Vector3(value.X, value.Y, value.Z), transform));
             }
             if (vertices.Count >= 3) destination.Add(new RawPolygon(vertices));
         }
@@ -91,9 +93,15 @@ internal sealed class NavmeshBaker(Ds3ArchiveReader archives)
     {
         var ordered = source.OrderBy(item => item.MeanY).ToArray();
         var groups = new List<List<RawPolygon>>();
+        double heightSum = 0;
         foreach (var polygon in ordered)
         {
-            if (groups.Count == 0 || polygon.MeanY - groups[^1].Average(item => item.MeanY) > 14f) groups.Add([]);
+            if (groups.Count == 0 || polygon.MeanY - heightSum / groups[^1].Count > 14f)
+            {
+                groups.Add([]);
+                heightSum = 0;
+            }
+            heightSum += polygon.MeanY;
             groups[^1].Add(polygon);
         }
 
@@ -104,7 +112,7 @@ internal sealed class NavmeshBaker(Ds3ArchiveReader archives)
             group.Max(item => item.MaximumY) + 2,
             group.Select((item, polygonIndex) => new MapPolygon(
                 $"p-{index}-{polygonIndex}", item.MinimumY, item.MaximumY,
-                item.Vertices.Select(vertex => new MapPoint(vertex.X, vertex.Z)).ToArray())).ToArray())).ToArray();
+                item.Vertices.Select(vertex => new MapPoint(vertex.X, vertex.Z, vertex.Y)).ToArray())).ToArray())).ToArray();
     }
 
     private sealed record RawPolygon(IReadOnlyList<Vector3> Vertices)

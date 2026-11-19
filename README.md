@@ -21,13 +21,23 @@ disorienting for anyone who finds spatial navigation difficult.
 
 - A clear player marker that turns as you turn.
 - A softly dotted trail showing the route you have just taken.
+- The real ground of each area (stone, grass, ash, water) painted from your
+  own copy of the game, with gentle shading for slopes, stairs and ledges.
+- Places you have already explored stay bright; places you have not are
+  gently dimmed.
+- Bonfires you have lit glow; ones you have not lit yet show as grey ash.
+  The edge marker points toward the nearest lit bonfire when one is known.
+  It shows straight-line distance and says **Above** or **Below** when the
+  bonfire is on another floor. A plain sword marks a bonfire with unknown
+  activation, or an unlit bonfire when grey ash is turned off.
 - Automatic map and floor changes, with a smooth fade when you move between
   levels.
-- Bonfires by default, plus an optional setting for uncollected items.
+- An optional setting for uncollected items.
 - A choice of size, position, colours, map shape, zoom, trail length and more.
 
-The map is made from the navigation information in **your own installed copy of
-DS3**, not downloaded artwork. Here is a real example: the layered navigation
+The map is baked from navigation surfaces, static collision and the ground
+textures in **your own installed copy of DS3**. Pale paths show navigation
+geometry, drawn over the real ground textures of the surrounding terrain. The picture below shows the layered navigation
 map prepared for the Grand Archives interior. The coloured shapes are walkable
 areas on different heights; they are what the minimap uses to help place you.
 
@@ -63,7 +73,7 @@ desktop shortcut), then launch DS3. The map stays hidden until the game has focu
 - `Ctrl+Shift+C` clears the trail for the current play session.
 
 If a tall building ever shows the wrong level, `Ctrl+Shift+PageUp` and
-`Ctrl+Shift+PageDown` let you temporarily choose the floor above or below.
+`Ctrl+Shift+PageDown` let you temporarily choose the floor above or below. Use `Ctrl+Shift+Home` to return to automatic floor selection.
 
 > [!NOTE]
 > The overlay works best in windowed or managed-borderless mode. The first-run
@@ -79,8 +89,7 @@ alter game files, or send game information over the network. Using any
 memory-reading tool is still at your own risk, so offline play is strongly
 recommended.
 
-The current release supports the Steam version of DS3 (`1.15.2.0`) and the base
-game. DLC may be installed, but its areas are not mapped yet.
+The current release supports the Steam version of DS3 (`1.15.2.0`) and prepares maps for the base game, the Hollow Arenas, and the exploration areas from each installed DLC.
 
 ## Thoughts, feedback, and gentle suggestions are very welcome
 
@@ -138,10 +147,10 @@ No administrator permission is required. The command:
 4. Builds the complete solution in Release mode.
 5. Runs the automated tests.
 6. Publishes a self-contained Windows executable.
-7. Reads the installed game archives and generates the base-game map package.
+7. Reads the installed game archives and generates the map package for the installed archives.
 
 The initial run may take several minutes. The first full environmental bake
-reads thousands of placed DS3 map pieces and can take roughly 5-10 minutes,
+reads navigation placements and high-detail collision archives and takes several minutes,
 depending on storage and CPU speed. Later runs reuse the finished package and
 skip map generation when the game archives and package schema are current.
 
@@ -219,6 +228,7 @@ The hotkeys are global and work while DS3 has focus:
 - `Ctrl+Shift+C` - clear the current session trail
 - `Ctrl+Shift+PageUp` - temporarily select a higher map floor
 - `Ctrl+Shift+PageDown` - temporarily select a lower map floor
+- `Ctrl+Shift+Home` - resume automatic floor selection
 
 The floor override resets when the internal DS3 map changes. It is intended for
 areas where several walkable floors overlap and automatic elevation selection
@@ -228,22 +238,31 @@ does not choose the desired level.
 
 Open settings with `Ctrl+Shift+M`. Available options include:
 
-- Overlay size, zoom and opacity
+- A settings preview of the current area, or Firelink when the game is closed
+- Overlay size, zoom, edge margin, area label and opacity
 - Top-left, top-right, bottom-left or bottom-right placement
 - Player-up or north-up orientation
 - Circular, rounded-square or square mask
 - Background, map, player and trail colours
 - Configurable inked map-edge, bronze frame and player-outline colours
-- Procedural aged-ground etching and grain with adjustable strength
+- Real ground textures from your game (default) or the procedural parchment
+  style, with a toning slider from "exactly as in the game" to "map colour"
+- Procedural aged-ground etching and grain for the parchment style
+- Baked hillshading with darker rims at walls and drops, and soft wall shadows
 - Smooth, adjustable cross-fades between elevation layers
-- Bonfire markers (enabled by default)
+- Fog-of-war: unexplored ground is dimmed (adjustable, or off), remembered per
+  character, with a **Reset explored area** button
+- Bonfire markers (enabled by default), shown as grey ash until lit
+- A pointer to the nearest bonfire, preferring lit ones, when it is off the map or on another floor
 - Read-only uncollected-item markers (disabled by default), which disappear as
   their DS3 pickup event flags are set
 - Marker size plus separate bonfire and item colours
 - Animated coiled-sword bonfire and rising item-wisp symbols that remain upright
   while a player-up map rotates
 - Layered, cloud-like fractal ground noise clipped to navigation geometry
-- Trail-dot size
+- Trail style: **Soul** (default; a softly glowing wisp with motes of light
+  drifting towards you), **Inked** (a dashed sepia route, suited to the
+  parchment style), dotted, connected or hidden, with adjustable width
 - Trail duration from 0 (whole session) to 180 minutes
 - Optional gradual age fade for duration-limited trails
 - Dark navigation-boundary and player-marker outlines for contrast
@@ -253,8 +272,8 @@ Open settings with `Ctrl+Shift+M`. Available options include:
 - JSON or CSV export of the current trail
 
 Session trails are kept in memory by default and disappear when the minimap is
-closed. Enabling persistent history stores new trail points in a local SQLite
-database.
+closed. Enabling persistent history stores new trail points, and the explored
+area for each character, in a local SQLite database.
 
 ## Generated files and privacy
 
@@ -274,12 +293,14 @@ User data is stored beneath `%LocalAppData%\DS3Minimap`:
 %LocalAppData%\DS3Minimap\settings.json
 %LocalAppData%\DS3Minimap\data\trails.sqlite3
 %LocalAppData%\DS3Minimap\maps\1.15.2\base.dsmaps
+%LocalAppData%\DS3Minimap\maps\1.15.2\materials\<map>.atlas
 ```
 
 The generated `.dsmaps` file is produced locally from your installed game. It
-contains simplified AI-navigation polygons plus bonfire and trackable treasure
-metadata, not game textures or item models. Do not
-redistribute generated game-derived map packages.
+contains placed navigation polygons, sampled collision ground and bonfire and trackable treasure metadata. The
+`materials` atlases hold top-down ground-texture tiles projected from the
+game's own map models and textures. Do not redistribute generated game-derived
+map packages or atlases.
 
 ## Generating and visually checking the map package
 
@@ -294,7 +315,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\generate-maps.ps1 
 This is the recommended map-development command. `-Force` rereads DS3's
 installed archives and replaces the package only after a complete successful
 bake. `-OpenPreviews` opens a local HTML gallery containing a top-down SVG for
-every base-game map. Each elevation layer has a different colour so stacked
+every included map. Each elevation layer has a different colour so stacked
 floors and suspicious gaps are easy to spot. Orange circles show resolved
 bonfires and pale diamonds show treasure pickups whose collected state can be
 read from a DS3 event flag.
@@ -316,12 +337,12 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\generate-maps.ps1 
 ```
 
 `-ReviewDir` creates a portable review folder inside the project. It contains
-12 navigation-only overviews and one SVG for each generated floor. All floor
+one overview per region and one SVG for each generated floor. All floor
 SVGs use the same navigation-derived framing as their map overview, so they can
 be overlaid or compared directly. The default remains the LocalAppData
 `diagnostics` folder when this option is omitted.
 
-The generator verifies all 12 supported internal map IDs, finite polygon and
+The generator verifies the regions expected for the installed archives, collision coverage, finite polygon and
 marker coordinates, useful map extents, elevation layers, non-empty geometry,
 and plausible base-game bonfire/pickup totals. A
 validation failure returns a non-zero exit code instead of installing a partial
@@ -333,16 +354,20 @@ or corrupt package. Its outputs are:
 %LocalAppData%\DS3Minimap\maps\1.15.2\diagnostics\validation-report.json
 ```
 
-The map uses only elevation-aware AI navigation surfaces. An earlier
-experimental visual-context pass projected every FLVER map piece, but DS3's map
-pieces include sky domes, horizon cards and distant scenery. Their top-down
-convex hulls produced misleading circles and oversized polygons, so they are
-excluded from both the package and live renderer.
+After the package, the baker paints ground textures for every map whose atlas is
+missing or stale (about 5–40 seconds per map, roughly 6 minutes for all maps). It projects each placed map piece's
+diffuse texture straight down onto that floor's collision ground. That includes
+DS3's two-texture and four-layer MultiBlend terrain materials. It then bakes in
+hillshading and ledge rims. A map that cannot be textured keeps the flat ground
+fill. Useful flags: `--skip-materials`, `--materials-only`, and, for checking
+one map, `--bake-materials <map> --dump-material-tiles <dir>`. The dump writes
+each tile plus a stitched `mosaic-<floor>.png`.
 
-AI navigation is intentionally not identical to player collision. A character
-can stand beside props, on shallow water, at ledges, or in scripted spaces that
-enemies cannot traverse. Those locations appear as gaps in the coloured
-navigation layer even when the read player position is correct.
+The baker places each navigation mesh using DS3’s NVA instance transforms, then reads the high-detail Havok collision shapes at their placed MSB and rigid-body transforms. It samples upward-facing ordinary static collision on a half-unit grid and expands from the navigation surface across neighbouring cells at compatible heights. Each floor has a separate ground layer. You can toggle it in **Map → Show collision ground around paths**. Blender and extracted game assets are unnecessary.
+
+Ground shading describes a physical surface. Locked doors, lifts, destructible objects, narrow ledges and world-state changes can affect where a character can actually go. The validation report lists landmarks without collision ground within two world units on each axis. The gallery and report are generated locally.
+
+To compare a package with positions recorded during play, run the baker with `--audit-trail <trails.sqlite3> --output <package.dsmaps>`. It reads the database and prints aggregate results per map. A sample matches when the best floor is within one horizontal unit and 1.5 vertical units. The result describes the routes recorded in that database.
 
 The minimap has no telemetry service, account system, update checker or network
 client. Settings, generated maps and trail history remain on the computer.
@@ -479,13 +504,13 @@ map-preparation worker as self-contained Windows executables, then packages
 both into a single per-user setup program:
 
 ```powershell
-.\scripts\package-installer.ps1 -Version 1.0.0
+.\scripts\package-installer.ps1 -Version 1.2.0
 ```
 
 The generated file is:
 
 ```text
-artifacts\installer\DS3Minimap-Setup-1.0.0-win-x64.exe
+artifacts\installer\DS3Minimap-Setup-1.2.0-win-x64.exe
 ```
 
 The packaging machine needs the project bootstrap prerequisites plus

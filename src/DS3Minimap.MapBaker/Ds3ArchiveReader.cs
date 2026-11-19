@@ -9,7 +9,7 @@ internal sealed class Ds3ArchiveReader : IDisposable
 
     internal Ds3ArchiveReader(string gameDirectory)
     {
-        foreach (var name in Enumerable.Range(1, 5).Select(index => $"Data{index}"))
+        foreach (var name in DS3Minimap.Core.MapCatalog.InstalledArchives(gameDirectory).Skip(1))
         {
             var bhdPath = Path.Combine(gameDirectory, name + ".bhd");
             var bdtPath = Path.Combine(gameDirectory, name + ".bdt");
@@ -33,7 +33,7 @@ internal sealed class Ds3ArchiveReader : IDisposable
             if (file.UnpaddedFileSize > 0 && file.UnpaddedFileSize < bytes.Length) Array.Resize(ref bytes, checked((int)file.UnpaddedFileSize));
             return bytes;
         }
-        throw new FileNotFoundException($"{virtualPath} was not found in the base-game archives.");
+        throw new FileNotFoundException($"{virtualPath} was not found in the installed archives.");
     }
 
     public void Dispose()

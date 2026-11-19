@@ -205,14 +205,14 @@ public sealed class Ds3TelemetrySource(Ds3Layout? layout = null) : IGameTelemetr
     public static string DecodeMapId(ReadOnlySpan<byte> bytes)
     {
         if (bytes.Length < 4) throw new ArgumentException("A DS3 map identifier requires four bytes.", nameof(bytes));
-        ReadOnlySpan<byte> baseAreas = [30, 31, 32, 33, 34, 35, 37, 38, 39, 40, 41];
+        
         ReadOnlySpan<(int Area, int Block)> candidates = [(0, 1), (1, 0), (2, 3), (3, 2)];
         foreach (var candidate in candidates)
         {
             var area = bytes[candidate.Area];
             var block = bytes[candidate.Block];
-            if (baseAreas.Contains(area) && ((area == 30 && block is 0 or 1) || (area == 34 && block == 1) || (area is not 30 and not 34 && block == 0)))
-                return $"m{area:D2}_{block:D2}";
+            var id = $"m{area:D2}_{block:D2}";
+            if (MapCatalog.Maps.Any(map => map.Id == id)) return id;
         }
         return $"unknown-{Convert.ToHexString(bytes)}";
     }

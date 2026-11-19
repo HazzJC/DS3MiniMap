@@ -5,7 +5,7 @@
         ShowInTaskbar="True" Topmost="True" ResizeMode="NoResize"
         Title="DS3 Minimap" Width="320" Height="320">
   <Grid x:Name="Root" Background="Transparent">
-    <Border VerticalAlignment="Bottom" Margin="22" Padding="12,6"
+    <Border x:Name="LabelPanel" VerticalAlignment="Bottom" Margin="22" Padding="12,6"
             BorderBrush="#B38F7344" BorderThickness="1" CornerRadius="2">
       <Border.Background>
         <LinearGradientBrush StartPoint="0,0" EndPoint="1,1">

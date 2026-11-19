@@ -3,8 +3,14 @@
     <OutputType>Exe</OutputType>
     <TargetFramework>net10.0</TargetFramework>
     <RuntimeIdentifier>win-x64</RuntimeIdentifier>
+    <!-- Ground-texture baking parses many map models in parallel; server GC
+         keeps those allocation-heavy threads from stalling one another. -->
+    <ServerGarbageCollection>true</ServerGarbageCollection>
+    <ConcurrentGarbageCollection>true</ConcurrentGarbageCollection>
   </PropertyGroup>
   <ItemGroup>
+    <PackageReference Include="BCnEncoder.Net" />
+    <PackageReference Include="SkiaSharp" />
     <ProjectReference Include="../DS3Minimap.Core/DS3Minimap.Core.csproj" />
     <ProjectReference Include="../../.deps/smithbox/src/Andre/SoulsFormats/SoulsFormats/Andre.SoulsFormats.csproj" />
     <ProjectReference Include="../../.deps/smithbox/src/Havok/HKX2/Havok.HKX2.csproj" />

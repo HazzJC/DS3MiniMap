@@ -1,5 +1,5 @@
 #ifndef MyAppVersion
-  #define MyAppVersion "1.0.0"
+  #define MyAppVersion "1.2.0"
 #endif
 
 #define MyAppName "DS3 Minimap"
@@ -10,6 +10,7 @@
 AppId={{A21FE2A9-7E36-464C-A4FC-2EBFB14A85A2}
 AppName={#MyAppName}
 AppVersion={#MyAppVersion}
+VersionInfoVersion={#MyAppVersion}.0
 AppPublisher={#MyAppPublisher}
 DefaultDirName={localappdata}\DS3Minimap\App
 DefaultGroupName={#MyAppName}
@@ -34,8 +35,8 @@ Name: "english"; MessagesFile: "compiler:Default.isl"
 Name: "desktopicon"; Description: "Create a desktop shortcut"; GroupDescription: "Additional shortcuts:"; Flags: unchecked
 
 [Files]
-Source: "..\artifacts\installer-staging\app\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
-Source: "..\artifacts\installer-staging\baker\*"; DestDir: "{app}\baker"; Flags: ignoreversion recursesubdirs createallsubdirs
+Source: "..\artifacts\installer-staging\app\*"; DestDir: "{app}"; Excludes: "*.pdb"; Flags: ignoreversion recursesubdirs createallsubdirs
+Source: "..\artifacts\installer-staging\baker\*"; DestDir: "{app}\baker"; Excludes: "*.pdb"; Flags: ignoreversion recursesubdirs createallsubdirs
 Source: "..\README.md"; DestDir: "{app}"; DestName: "README.md"; Flags: ignoreversion
 Source: "..\THIRD-PARTY-NOTICES.md"; DestDir: "{app}"; Flags: ignoreversion
 

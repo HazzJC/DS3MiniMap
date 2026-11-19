@@ -4,6 +4,7 @@
     <CentralPackageTransitivePinningEnabled Condition="$([System.String]::Copy('$(MSBuildProjectName)').StartsWith('DS3Minimap'))">true</CentralPackageTransitivePinningEnabled>
   </PropertyGroup>
   <ItemGroup>
+    <PackageVersion Include="BCnEncoder.Net" Version="2.3.0" />
     <PackageVersion Include="Microsoft.Data.Sqlite" Version="10.0.10" />
     <PackageVersion Include="Microsoft.Extensions.Logging" Version="10.0.10" />
     <PackageVersion Include="Microsoft.Extensions.Logging.Console" Version="10.0.10" />

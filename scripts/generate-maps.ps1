@@ -44,7 +44,7 @@ Push-Location $repo
 try {
     & $dotnet build 'src/DS3Minimap.MapBaker/DS3Minimap.MapBaker.csproj' -c Release --no-restore
     if ($LASTEXITCODE -ne 0) { throw 'Map generator build failed. Run scripts/bootstrap.ps1 to restore dependencies.' }
-    $arguments = @('run', '--project', 'src/DS3Minimap.MapBaker', '-c', 'Release', '--no-build', '--', '--game-dir', $GameDir, '--output', $Output, '--preview-dir', $previewDir)
+    $arguments = @('artifacts/bin/Release/net10.0/win-x64/DS3Minimap.MapBaker.dll', '--game-dir', $GameDir, '--output', $Output, '--preview-dir', $previewDir)
     if ($Force) { $arguments += '--force' }
     & $dotnet @arguments
     if ($LASTEXITCODE -ne 0) { throw "Map generation or validation failed with exit code $LASTEXITCODE. See $previewDir\validation-report.json." }
